@@ -47,6 +47,8 @@ class G:
 - K: 开环增益，默认为1，为正数
 - es: 计算精度，二分法求解时有用，默认0.001，即保留2位小数
 
+使用 showself 方法打印自身。
+
 这些成员为系统即时的特性函数：
 - amp(o) : 精确的幅频特性
 - amp_log(o) : 大致的幅频特性，使用对数dB形式表示（可近似认为是 20*lg(amp(o))）
@@ -61,8 +63,10 @@ class G:
 - Kg : 精确的幅值裕度
 - Kg_log : 对数表示的、使用大致对数幅频特性得到的幅值裕度，使用对数形式表示
 
+你甚至可以用 correct1 方法玩超前校正！
+
 由于运算过程中的精度统一问题，所以一定要验算！
-此外，如果有需要，可以试试 update 刷新特性函数和特性值。
+此外，如果有需要，可以 update 刷新特性函数和特性值。
 
 加油算他！
 '''
@@ -87,14 +91,20 @@ class G:
         self.Kg = 0.0
         self.Kg_log = 0.0
 
-        if any([t<=0 for t in tlist]) or any([t<0 for t in Tlist]) or (v//1!=v) or K<=0:
-            print('这个系统有点怪哦，我解不了。你确定嘛：')
-            self.showself()
+        self.ready = False
+
+        if any([t<=0 for t in tlist]) or any([t<0 for t in Tlist]) or v!=1 or K<=0:
+            print('返回的系统有点高级哦，没法自动算指标嗷:(')
+            # self.showself()
         else:
-            self.showself()
+            # self.showself()
             self.update()
 
+    def __mul__(self, gg):
+        return G(self.tau+gg.tau, self.time+gg.time, self.v+gg.v, self.k*gg.k, max(self.es,gg.es))
+
     def update(self):
+        self.ready = False
         amp_exp = 'lambda o:' + str(self.k) + '/o**' + str(self.v)
         amp_log_exp = 'lambda o:20*log(' + str(self.k) + '/o**' + str(self.v)
         phase_exp = 'lambda o:' + str(-90*self.v) + '+(0'
@@ -126,6 +136,22 @@ class G:
         self.gamma_log = 180+self.phase(self.Wc_log)
         self.Kg = 1/self.amp(self.Wg)
         self.Kg_log = -self.amp_log(self.Wg)
+
+        self.ready = True
+
+    def correct1(self, phim):
+        '''简单而粗糙的超前校正而已。使用对数，精度不保证。\n参数就是想要超前的相角角度值。\n'''
+        if phim<0 or phim>75:
+            print('phim有些刁难哦，去死一死吧。')
+            return None
+        if not self.ready:
+            print('原系统我都没算出来，校正不了啊呜')
+        sinphi = sin(phim*pi/180)
+        alpha = (1+sinphi)/(1-sinphi)
+        om = solve(self.amp_log, -10*log(alpha, 10), self.es)
+        T = 1/om/sqrt(alpha)
+        print('返回了一个校正系统嗷，你可以将它与原系统相乘~~')
+        return G([alpha*T], [T], 0)
 
     def showself(self):
         num = ''
@@ -169,17 +195,21 @@ class G:
 
     def showinfo(self):
         self.showself()
-        print('精确值们：')
-        print('\tWc\t=', self.Wc, 'rad/s')
-        print('\tWg\t=', self.Wg, 'rad/s')
-        print('\tGamma\t=', str(self.gamma)+'°')
-        print('\tKg\t=', self.Kg)
-        print('对数简化运算得到的值：')
-        print('\tWc\t=', self.Wc_log, 'rad/s')
-        print('\tWg\t=', self.Wg, 'rad/s')
-        print('\tGamma\t=', str(self.gamma_log)+'°')
-        print('\t20lg Kg\t=', self.Kg_log, 'dB')
-        print()
+        if self.ready:
+            print('精确值们：')
+            print('\tWc\t=', self.Wc, 'rad/s')
+            print('\tWg\t=', self.Wg, 'rad/s')
+            print('\tGamma\t=', str(self.gamma)+'°')
+            print('\tKg\t=', self.Kg)
+            print('对数简化运算得到的值：')
+            print('\tWc\t=', self.Wc_log, 'rad/s')
+            print('\tWg\t=', self.Wg, 'rad/s')
+            print('\tGamma\t=', str(self.gamma_log)+'°')
+            print('\t20lg Kg\t=', self.Kg_log, 'dB')
+            print()
+        else:
+            print('我太弱小了，没有力量，算不了指标，呜呜。。')
+            print()
 
 
 print('算TM的系统校正！')
