@@ -91,21 +91,22 @@ class G:
 
         self.ready = False
 
-        if any([t<=0 for t in tlist]) or any([t<0 for t in Tlist]) or v!=1 or K<=0:
-            print('返回的系统有点高级哦，没法自动算指标嗷:(')
-        else:
-            self.update()
+        self.update()
 
     def __repr__(self):
+        et = 1-int(log(self.es,10))
+        def rnd(n):
+            return round(n, et)
+
         num = ''
         den = ''
 
         if not self.tau:
             num = str(self.k)
         elif self.k==1:
-            num = ''.join([f'({str(t)}*s + 1)' for t in self.tau])
+            num = ''.join([f'({rnd(t)}*s + 1)' for t in self.tau])
         else:
-            num = str(self.k) + '*' + ''.join([f'({str(t)}*s + 1)' for t in self.tau])
+            num = str(self.k) + '*' + ''.join([f'({rnd(t)}*s + 1)' for t in self.tau])
 
         if not self.time:
             if self.v==0:
@@ -116,11 +117,11 @@ class G:
                 den = f's^{self.v}'
         else:
             if self.v==0:
-                den = ''.join([f'({str(t)}*s + 1)' for t in self.time])
+                den = ''.join([f'({rnd(t)}*s + 1)' for t in self.time])
             elif self.v==1:
-                den = 's*' + ''.join([f'({str(t)}*s + 1)' for t in self.time])
+                den = 's*' + ''.join([f'({rnd(t)}*s + 1)' for t in self.time])
             else:
-                den = f's^{self.v}*' + ''.join([f'({str(t)}*s + 1)' for t in self.time])
+                den = f's^{self.v}*' + ''.join([f'({rnd(t)}*s + 1)' for t in self.time])
 
         dn1 = len(num)
         dn2 = len(den)
@@ -136,6 +137,10 @@ class G:
 
     def update(self):
         self.ready = False
+        if any([t<=0 for t in self.tau]) or any([t<0 for t in self.time]) or self.v!=1 or self.k<=0:
+            print('返回的系统有点高级哦，没法自动算指标嗷:(')
+            return
+
         amp_exp = 'lambda o:' + str(self.k) + '/o**' + str(self.v)
         amp_log_exp = 'lambda o:20*log(' + str(self.k) + '/o**' + str(self.v)
         phase_exp = 'lambda o:' + str(-90*self.v) + '+(0'
@@ -172,11 +177,12 @@ class G:
 
     def correct1(self, phim):
         '''简单而粗糙的超前校正而已。使用对数，精度不保证。\n参数就是想要超前的相角角度值。\n'''
-        if phim<0 or phim>75:
+        if phim<0 or phim>80:
             print('phim有些刁难哦，去死一死吧。')
             return None
         if not self.ready:
             print('原系统我都没算出来，校正不了啊呜')
+            return None
         sinphi = sin(phim*pi/180)
         alpha = (1+sinphi)/(1-sinphi)
         om = solve(self.amp_log, -10*log(alpha, 10), self.es)
