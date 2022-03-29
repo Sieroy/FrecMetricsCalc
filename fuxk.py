@@ -47,8 +47,6 @@ class G:
 - K: 开环增益，默认为1，为正数
 - es: 计算精度，二分法求解时有用，默认0.001，即保留2位小数
 
-使用 showself 方法打印自身。
-
 这些成员为系统即时的特性函数：
 - amp(o) : 精确的幅频特性
 - amp_log(o) : 大致的幅频特性，使用对数dB形式表示（可近似认为是 20*lg(amp(o))）
@@ -63,7 +61,7 @@ class G:
 - Kg : 精确的幅值裕度
 - Kg_log : 对数表示的、使用大致对数幅频特性得到的幅值裕度，使用对数形式表示
 
-你甚至可以用 correct1 方法玩超前校正！
+你甚至可以用 correct1 方法玩相角优先的超前校正！
 
 由于运算过程中的精度统一问题，所以一定要验算！
 此外，如果有需要，可以 update 刷新特性函数和特性值。
@@ -95,10 +93,43 @@ class G:
 
         if any([t<=0 for t in tlist]) or any([t<0 for t in Tlist]) or v!=1 or K<=0:
             print('返回的系统有点高级哦，没法自动算指标嗷:(')
-            # self.showself()
         else:
-            # self.showself()
             self.update()
+
+    def __repr__(self):
+        num = ''
+        den = ''
+
+        if not self.tau:
+            num = str(self.k)
+        elif self.k==1:
+            num = ''.join([f'({str(t)}*s + 1)' for t in self.tau])
+        else:
+            num = str(self.k) + '*' + ''.join([f'({str(t)}*s + 1)' for t in self.tau])
+
+        if not self.time:
+            if self.v==0:
+                den = '1'
+            elif self.v==1:
+                den = 's'
+            else:
+                den = f's^{self.v}'
+        else:
+            if self.v==0:
+                den = ''.join([f'({str(t)}*s + 1)' for t in self.time])
+            elif self.v==1:
+                den = 's*' + ''.join([f'({str(t)}*s + 1)' for t in self.time])
+            else:
+                den = f's^{self.v}*' + ''.join([f'({str(t)}*s + 1)' for t in self.time])
+
+        dn1 = len(num)
+        dn2 = len(den)
+        slash = '-'*max(dn1,dn2)
+        if dn1>dn2:
+            den = ' '*((dn1-dn2)//2) + den
+        else:
+            num = ' '*((dn2-dn1)//2) + num
+        return num+'\n'+slash+'\n'+den
 
     def __mul__(self, gg):
         return G(self.tau+gg.tau, self.time+gg.time, self.v+gg.v, self.k*gg.k, max(self.es,gg.es))
@@ -153,48 +184,10 @@ class G:
         print('返回了一个校正系统嗷，你可以将它与原系统相乘~~')
         return G([alpha*T], [T], 0)
 
-    def showself(self):
-        num = ''
-        den = ''
-
-        if not self.tau:
-            num = str(self.k)
-        elif self.k==1:
-            num = ''.join([f'({str(t)}*s + 1)' for t in self.tau])
-        else:
-            num = str(self.k) + '*' + ''.join([f'({str(t)}*s + 1)' for t in self.tau])
-
-        if not self.time:
-            if self.v==0:
-                den = '1'
-            elif self.v==1:
-                den = 's'
-            else:
-                den = f's^{self.v}'
-        else:
-            if self.v==0:
-                den = ''.join([f'({str(t)}*s + 1)' for t in self.time])
-            elif self.v==1:
-                den = 's*' + ''.join([f'({str(t)}*s + 1)' for t in self.time])
-            else:
-                den = f's^{self.v}*' + ''.join([f'({str(t)}*s + 1)' for t in self.time])
-
-        dn1 = len(num)
-        dn2 = len(den)
-        slash = '-'*max(dn1,dn2)
-        if dn1>dn2:
-            den = ' '*((dn1-dn2)//2) + den
-        else:
-            num = ' '*((dn2-dn1)//2) + num
-
-        print()
-        print(num)
-        print(slash)
-        print(den)
-        print()
-
     def showinfo(self):
-        self.showself()
+        print()
+        print(self)
+        print()
         if self.ready:
             print('精确值们：')
             print('\tWc\t=', self.Wc, 'rad/s')
