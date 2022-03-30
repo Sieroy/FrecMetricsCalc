@@ -66,12 +66,15 @@ class G:
 - Wg : 穿越频率
 - Kg : 精确的幅值裕度
 - Kg_log : 对数表示的、使用大致对数幅频特性得到的幅值裕度，使用对数形式表示
+你可以使用 showinfo 方法来查看这些值，
+此外，你也可以用 showlogexp 方法输出幅频对数算式，拿一点过程分嘛
 
 你甚至可以玩频域校正！
 - correct1 : 相角裕度优先的超前校正
 - correct2 : 剪切频率优先的超前校正
 - correct3 : 相角裕度优先的迟后校正
-不确定如何使用的话，用 print(G.correct1.__doc__) 可以看参数怎么给。
+- correct4 : 剪切频率优先的迟后校正
+不确定如何使用的话，可以用 print(G.correct1.__doc__) 看参数怎么给。
 
 由于运算过程中的精度统一问题，所以一定要验算！
 此外，如果有需要，可以 update 刷新特性函数和特性值。
@@ -81,8 +84,6 @@ class G:
     def __init__(self, tlist, Tlist, v, K=1, es=0.001):
         self.tau = tlist.copy()
         self.time = Tlist.copy()
-        self.tau.sort(reverse = True)
-        self.time.sort(reverse = True)
         self.v = v
         self.k = K
 
@@ -150,6 +151,9 @@ class G:
 
     def update(self):
         self.ready = False
+        self.tau.sort(reverse = True)
+        self.time.sort(reverse = True)
+
         if any([t<=0 for t in self.tau]) or any([t<0 for t in self.time]) or self.v!=1 or self.k<=0:
             print('返回的系统有点高级哦，没法自动算指标嗷:(')
             return
@@ -237,6 +241,20 @@ class G:
         print('返回了一个校正系统嗷，你可以将它与原系统相乘~~')
         return G([tau], [beta*tau], 0)
 
+    def correct4(self, Wc, tk=7):
+        '''简单而粗糙的剪切频率优先的迟后校正，使用对数，精度不保证。\n参数1就是考虑到迟后影响的预期剪切频率，\n参数2为依据迟后影响决定的tau系数，一般为5~10，默认为7。\n'''
+        if not self.ready:
+            print('原系统我都没算出来，校正不了啊呜')
+            return None
+        if Wc > self.Wc_log:
+            print('这比原系统剪切频率还大嗷，确定是用迟后校正嘛。')
+            return None
+        taramp = self.amp_log(oc)
+        beta = 10**(taramp/20)
+        tau = tk/oc
+        print('返回了一个校正系统嗷，你可以将它与原系统相乘~~')
+        return G([tau], [beta*tau], 0)
+
     def showinfo(self):
         print()
         print(self)
@@ -257,5 +275,44 @@ class G:
             print('我太弱小了，没有力量，算不了指标，呜呜。。')
             print()
 
+    def showlogexp(self):
+        if self.ready:
+            taus = self.tau.copy()
+            times = self.time.copy()
+            et = 1-int(log(self.es,10))
+            def rnd(n):
+                return round(n, et)
+
+            print('20lg A(w) =')
+            logexp = ' 20('
+            if self.k!=1:
+                logexp += f' lg {self.k} -lg w '  # 反正只用来算1型系统，直接写上了。
+            else:
+                logexp += '-lg w '
+
+            t0 = 0
+            while taus or times:
+                if taus and times:
+                    if taus[0] > times[0]:
+                        t = taus.pop(0)
+                        pm = '+'
+                    else:
+                        t = times.pop(0)
+                        pm = '-'
+                elif taus:
+                    t = taus.pop(0)
+                    pm = '+'
+                elif times:
+                    t = times.pop(0)
+                    pm = '-'
+
+                t1 = 1/t
+                print(logexp+f') , {rnd(t0)} < w < {rnd(t1)}')
+                logexp += f'{pm}lg {rnd(t)}w '
+                t0 = t1
+            print(logexp+f') , w > {rnd(t0)}')
+
+        else:
+            print('这个系统不支持这项功能哦、')
 
 print('算TM的系统校正！')
