@@ -17,12 +17,18 @@ def solve(func, aimv=0, es=0.01):
         v2 = v1*dire
         if (func(v1)>aimv) ^ (func(v2)>aimv):
             break
+        if abs(func(v1)-aimv)<es:
+            return round(v1, 1-int(log(es,10)))
+        if abs(func(v2)-aimv)<es:
+            return round(v2, 1-int(log(es,10)))
     # 二分法
     fv1 = func(v1)
     fv2 = func(v2)
     while True:
         v0 = (v1+v2)/2
         fv0 = func(v0)
+        if abs(fv0-aimv)<es:
+            return round(v0, 1-int(log(es,10)))
         if (fv0>aimv) ^ (fv1>aimv):
             if abs(fv0-fv1) < es:
                 # 已经小于指定精度，直接返回
@@ -36,7 +42,7 @@ def solve(func, aimv=0, es=0.01):
             fv1 = fv0
 
 class G:
-    '''简单的系统罢了。就是这样的一个形式，再高级的不想搞，诶嘿~：
+    '''简单的系统罢了。就是这样的一个形式，再高级的不想搞，至少作业用不到，诶嘿~：
              K*(t1*s + 1)(t2*s + 1)...(tn*s + 1)
     G(s) = ---------------------------------------
             s^v*(T1*s + 1)(T2*s + 1)...(Tm*s + 1)
@@ -61,7 +67,11 @@ class G:
 - Kg : 精确的幅值裕度
 - Kg_log : 对数表示的、使用大致对数幅频特性得到的幅值裕度，使用对数形式表示
 
-你甚至可以用 correct1 方法玩相角优先的超前校正！
+你甚至可以玩频域校正！
+- correct1 : 相角裕度优先的超前校正
+- correct2 : 剪切频率优先的超前校正
+- correct3 : 相角裕度优先的迟后校正
+不确定如何使用的话，用 print(G.correct1.__doc__) 可以看参数怎么给。
 
 由于运算过程中的精度统一问题，所以一定要验算！
 此外，如果有需要，可以 update 刷新特性函数和特性值。
@@ -133,7 +143,10 @@ class G:
         return num+'\n'+slash+'\n'+den
 
     def __mul__(self, gg):
-        return G(self.tau+gg.tau, self.time+gg.time, self.v+gg.v, self.k*gg.k, max(self.es,gg.es))
+        if type(gg) is int or type(gg) is float:
+            return G(self.tau, self.time, self.v, self.k*gg, self.es)
+        elif type(gg) is G:
+            return G(self.tau+gg.tau, self.time+gg.time, self.v+gg.v, self.k*gg.k, max(self.es,gg.es))
 
     def update(self):
         self.ready = False
@@ -164,9 +177,14 @@ class G:
         self.amp_log = eval(amp_log_exp)
         self.phase = eval(phase_exp)
 
-        self.Wc = solve(self.amp, 1, self.es)
-        self.Wc_log = solve(self.amp_log, 0, self.es)
-        self.Wg = solve(self.phase, -180, self.es)
+        try:
+            self.Wc = solve(self.amp, 1, self.es)
+            self.Wc_log = solve(self.amp_log, 0, self.es)
+            self.Wg = solve(self.phase, -180, self.es)
+        except:
+            print('寄啦！看来数有点刁钻，算不出来嗷。或许可以试试加个0.0001？')
+            print('下面是报错信息：')
+            raise
 
         self.gamma = 180+self.phase(self.Wc)
         self.gamma_log = 180+self.phase(self.Wc_log)
@@ -176,7 +194,7 @@ class G:
         self.ready = True
 
     def correct1(self, phim):
-        '''简单而粗糙的超前校正而已。使用对数，精度不保证。\n参数就是想要超前的相角角度值。\n'''
+        '''简单而粗糙的相角裕度优先的超前校正而已。使用对数，精度不保证。\n参数就是想要超前的相角角度值。\n'''
         if phim<0 or phim>80:
             print('phim有些刁难哦，去死一死吧。')
             return None
@@ -189,6 +207,35 @@ class G:
         T = 1/om/sqrt(alpha)
         print('返回了一个校正系统嗷，你可以将它与原系统相乘~~')
         return G([alpha*T], [T], 0)
+
+    def correct2(self, Wc):
+        '''简单而粗糙的剪切频率优先的超前校正，使用对数，精度不保证。\n参数就是预期的剪切频率。\n'''
+        if not self.ready:
+            print('原系统我都没算出来，校正不了啊呜')
+            return None
+        if Wc<self.Wc_log:
+            print('Wc这么小，让我超前个鬼哦！')
+            return None
+        taramp = self.amp_log(Wc)
+        alpha = 10**(taramp/-10)
+        T = 1/Wc/sqrt(alpha)
+        print('返回了一个校正系统嗷，你可以将它与原系统相乘~~')
+        return G([alpha*T], [T], 0)
+
+    def correct3(self, gammaplus, tk=7):
+        '''简单而粗糙的相角裕度优先的迟后校正，使用对数，精度不保证。\n参数1就是考虑到迟后影响的预期相角裕度角度值，\n参数2为依据迟后影响决定的tau系数，一般为5~10，默认为7。\n'''
+        if not self.ready:
+            print('原系统我都没算出来，校正不了啊呜')
+            return None
+        if gammaplus < self.gamma_log:
+            print('这比原系统相角裕度还小嗷，真就反向校正呗。')
+            return None
+        oc = solve(self.phase, gammaplus-180, self.es)
+        taramp = self.amp_log(oc)
+        beta = 10**(taramp/20)
+        tau = tk/oc
+        print('返回了一个校正系统嗷，你可以将它与原系统相乘~~')
+        return G([tau], [beta*tau], 0)
 
     def showinfo(self):
         print()
