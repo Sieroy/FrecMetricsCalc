@@ -12,7 +12,11 @@ def solve(func, aimv=0, es=0.01):
         dire = 10
         v2 = 10
     # 找初始区间
+    count = 0
     while True:
+        count += 1
+        if count>=1024:
+            raise Exception('貌似没根。')
         v1 = v2
         v2 = v1*dire
         if (func(v1)>aimv) ^ (func(v2)>aimv):
@@ -24,7 +28,9 @@ def solve(func, aimv=0, es=0.01):
     # 二分法
     fv1 = func(v1)
     fv2 = func(v2)
-    while True:
+    count = 0
+    while count < 1024:
+        count += 1
         v0 = (v1+v2)/2
         fv0 = func(v0)
         if abs(fv0-aimv)<es:
@@ -40,6 +46,7 @@ def solve(func, aimv=0, es=0.01):
                 return round((v2+v0)/2, 1-int(log(es,10)))
             v1 = v0
             fv1 = fv0
+    raise Exception('二分不出来，呜呜。')
 
 class G:
     '''简单的系统罢了。就是这样的一个形式，再高级的不想搞，至少作业用不到，诶嘿~：
@@ -47,15 +54,16 @@ class G:
     G(s) = ---------------------------------------
             s^v*(T1*s + 1)(T2*s + 1)...(Tm*s + 1)
 创建时需要的参数为：
+- K: 开环增益，为正数
 - tlist: 分子tn列表，记得套中括号，记得化为+1系统
 - Tlist: 分母Tm列表，记得套中括号，记得化为+1系统
-- v: 系统型别，也就是分母s因子的次数，为整数
-- K: 开环增益，默认为1，为正数
+- v: 系统型别，也就是分母s因子的次数，为整数，默认为1，且仅为1时，系统才能计算指标
 - es: 计算精度，二分法求解时有用，默认0.001，即保留2位小数
 
 这些成员为系统即时的特性函数：
-- amp(o) : 精确的幅频特性
-- amp_log(o) : 大致的幅频特性，使用对数dB形式表示（可近似认为是 20*lg(amp(o))）
+- amp(o) : 精确的开环幅频特性
+- amp_log(o) : 大致的开环幅频特性，使用对数dB形式表示（可近似认为是 20*lg(amp(o))）
+- amp_fb : 精确的闭环幅频特性
 - phase(o) : 精确的相频特性，角度值
 
 这些成员为系统即时的特性值：
@@ -66,6 +74,9 @@ class G:
 - Wg : 穿越频率
 - Kg : 精确的幅值裕度
 - Kg_log : 对数表示的、使用大致对数幅频特性得到的幅值裕度，使用对数形式表示
+- Mr_log : 使用gamma_log计算得到的相对谐振峰值
+- sigmap_approx : 使用经验公式，用gamma_log计算得到的超调量
+- ts_approx : 使用经验公式，用gamma_log和Wc_log计算得到的5%调节时间
 你可以使用 showinfo 方法来查看这些值，
 此外，你也可以用 showlogexp 方法输出幅频对数算式，拿一点过程分嘛
 
@@ -81,7 +92,7 @@ class G:
 
 加油算他！
 '''
-    def __init__(self, tlist, Tlist, v, K=1, es=0.001):
+    def __init__(self, K, tlist, Tlist, v=1, es=0.001):
         self.tau = tlist.copy()
         self.time = Tlist.copy()
         self.v = v
@@ -91,6 +102,7 @@ class G:
 
         self.amp = None
         self.amp_log = None
+        self.amp_fb = None
         self.phase = None
         self.Wc = 0.0
         self.gamma = 0.0
@@ -99,6 +111,10 @@ class G:
         self.Wg = 0.0
         self.Kg = 0.0
         self.Kg_log = 0.0
+        self.Wb = 0.0
+        self.Mr_log = 0.0
+        self.sigmap_approx = 0.0
+        self.ts_approx = 0.0
 
         self.ready = False
 
@@ -145,9 +161,9 @@ class G:
 
     def __mul__(self, gg):
         if type(gg) is int or type(gg) is float:
-            return G(self.tau, self.time, self.v, self.k*gg, self.es)
+            return G(self.k*gg, self.tau, self.time, self.v, self.es)
         elif type(gg) is G:
-            return G(self.tau+gg.tau, self.time+gg.time, self.v+gg.v, self.k*gg.k, max(self.es,gg.es))
+            return G(self.k*gg.k, self.tau+gg.tau, self.time+gg.time, self.v+gg.v, max(self.es,gg.es))
 
     def update(self):
         self.ready = False
@@ -161,24 +177,31 @@ class G:
         amp_exp = 'lambda o:' + str(self.k) + '/o**' + str(self.v)
         amp_log_exp = 'lambda o:20*log(' + str(self.k) + '/o**' + str(self.v)
         phase_exp = 'lambda o:' + str(-90*self.v) + '+(0'
+        fbamp_num_exp = '1'
 
         for t in self.tau:
             t1 = 1/t
             amp_exp += f'*sqrt(1+({str(t)}*o)**2)'
             amp_log_exp += f'*(o*{str(t)} if o>={str(t1)} else 1)'
+            fbamp_num_exp += f'*(1+(o*{str(t)}*1j))'
             phase_exp += f'+atan(o*{str(t)})'
+
+        fbamp_den_exp = fbamp_num_exp+'+o*1j'
 
         for t in self.time:
             t1 = 1/t
             amp_exp += f'/sqrt(1+({str(t)}*o)**2)'
             amp_log_exp += f'/(o*{str(t)} if o>={str(t1)} else 1)'
+            fbamp_den_exp += f'*(1+(o*{str(t)}*1j))'
             phase_exp += f'-atan(o*{str(t)})'
 
         amp_log_exp += ',10)'
         phase_exp += ')*180/pi'
+        amp_fb_exp = 'lambda o:abs('+fbamp_num_exp+')/abs('+fbamp_den_exp+')'
 
         self.amp = eval(amp_exp)
         self.amp_log = eval(amp_log_exp)
+        self.amp_fb = eval(amp_fb_exp)
         self.phase = eval(phase_exp)
 
         try:
@@ -186,14 +209,27 @@ class G:
             self.Wc_log = solve(self.amp_log, 0, self.es)
             self.Wg = solve(self.phase, -180, self.es)
         except:
-            print('寄啦！看来数有点刁钻，算不出来嗷。或许可以试试加个0.0001？')
+            print('寄啦！看来数有点刁钻，算不出来嗷。')
             print('下面是报错信息：')
             raise
+
+        try:
+            self.Wb = solve(self.amp_fb, 0.5**0.5, self.es)
+        except:
+            self.Wb = -1
 
         self.gamma = 180+self.phase(self.Wc)
         self.gamma_log = 180+self.phase(self.Wc_log)
         self.Kg = 1/self.amp(self.Wg)
         self.Kg_log = -self.amp_log(self.Wg)
+
+        self.Mr_log = 1/sin(self.gamma_log*pi/180)
+        singamma1_1 = self.Mr_log-1
+        if 34<self.gamma_log<90:
+            self.sigmap_approx = 0.16 + 0.4*(singamma1_1)
+        else:
+            self.sigmap_approx = -1
+        self.ts_approx = pi/self.Wc_log*(2 + 1.5*singamma1_1 + 2.5*singamma1_1**2)
 
         self.ready = True
 
@@ -210,7 +246,7 @@ class G:
         om = solve(self.amp_log, -10*log(alpha, 10), self.es)
         T = 1/om/sqrt(alpha)
         print('返回了一个校正系统嗷，你可以将它与原系统相乘~~')
-        return G([alpha*T], [T], 0)
+        return G(1, [alpha*T], [T], 0)
 
     def correct2(self, Wc):
         '''简单而粗糙的剪切频率优先的超前校正，使用对数，精度不保证。\n参数就是预期的剪切频率。\n'''
@@ -224,7 +260,7 @@ class G:
         alpha = 10**(taramp/-10)
         T = 1/Wc/sqrt(alpha)
         print('返回了一个校正系统嗷，你可以将它与原系统相乘~~')
-        return G([alpha*T], [T], 0)
+        return G(1, [alpha*T], [T], 0)
 
     def correct3(self, gammaplus, tk=7):
         '''简单而粗糙的相角裕度优先的迟后校正，使用对数，精度不保证。\n参数1就是考虑到迟后影响的预期相角裕度角度值，\n参数2为依据迟后影响决定的tau系数，一般为5~10，默认为7。\n'''
@@ -239,7 +275,7 @@ class G:
         beta = 10**(taramp/20)
         tau = tk/oc
         print('返回了一个校正系统嗷，你可以将它与原系统相乘~~')
-        return G([tau], [beta*tau], 0)
+        return G(1, [tau], [beta*tau], 0)
 
     def correct4(self, Wc, tk=7):
         '''简单而粗糙的剪切频率优先的迟后校正，使用对数，精度不保证。\n参数1就是考虑到迟后影响的预期剪切频率，\n参数2为依据迟后影响决定的tau系数，一般为5~10，默认为7。\n'''
@@ -253,23 +289,29 @@ class G:
         beta = 10**(taramp/20)
         tau = tk/oc
         print('返回了一个校正系统嗷，你可以将它与原系统相乘~~')
-        return G([tau], [beta*tau], 0)
+        return G(1, [tau], [beta*tau], 0)
 
     def showinfo(self):
         print()
         print(self)
         print()
         if self.ready:
-            print('精确值们：')
+            print('开环指标精确值们：')
             print('\tWc\t=', self.Wc, 'rad/s')
             print('\tWg\t=', self.Wg, 'rad/s')
             print('\tGamma\t=', str(self.gamma)+'°')
             print('\tKg\t=', self.Kg)
-            print('对数简化运算得到的值：')
+            print('开环指标对数简化运算得到的值：')
             print('\tWc\t=', self.Wc_log, 'rad/s')
             print('\tWg\t=', self.Wg, 'rad/s')
             print('\tGamma\t=', str(self.gamma_log)+'°')
             print('\t20lg Kg\t=', self.Kg_log, 'dB')
+            print('闭环频域近似指标：')
+            print(f'\tWb\t= {self.Wb} rad/s' if self.Wb>0 else '\t不存在截止频率')
+            print('\tMr\t=', self.Mr_log*100, r'%')
+            print('闭环时域指标（经验公式、近似指标）：')
+            print('\tts\t=', self.ts_approx, 's')
+            print(f'\tsigma_p\t= {self.sigmap_approx*100} %' if self.sigmap_approx>0 else '\t相角裕度超出范围，超调量无法用经验公式计算')
             print()
         else:
             print('我太弱小了，没有力量，算不了指标，呜呜。。')
