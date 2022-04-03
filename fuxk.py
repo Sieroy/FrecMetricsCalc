@@ -1,5 +1,7 @@
 from math import *
 
+shutup = False
+
 def solve(func, aimv=0, es=0.01):
     '''简单的二分法求解。函数应为一元单调，定义在正值区间内。\n'''
     # 确定单调性，决定找根方向
@@ -171,7 +173,8 @@ class G:
         self.time.sort(reverse = True)
 
         if any([t<=0 for t in self.tau]) or any([t<0 for t in self.time]) or self.v!=1 or self.k<=0:
-            print('返回的系统有点高级哦，没法自动算指标嗷:(')
+            if not shutup:
+                print('返回的系统有点高级哦，没法自动算指标嗷:(')
             return
 
         amp_exp = 'lambda o:' + str(self.k) + '/o**' + str(self.v)
@@ -245,7 +248,9 @@ class G:
         alpha = (1+sinphi)/(1-sinphi)
         om = solve(self.amp_log, -10*log(alpha, 10), self.es)
         T = 1/om/sqrt(alpha)
-        print('返回了一个校正系统嗷，你可以将它与原系统相乘~~')
+        if not shutup:
+            print('返回了一个校正系统嗷，你可以将它与原系统相乘~~')
+            print(f'校正过程参数：alpha={alpha}, T={T}')
         return G(1, [alpha*T], [T], 0)
 
     def correct2(self, Wc):
@@ -259,7 +264,9 @@ class G:
         taramp = self.amp_log(Wc)
         alpha = 10**(taramp/-10)
         T = 1/Wc/sqrt(alpha)
-        print('返回了一个校正系统嗷，你可以将它与原系统相乘~~')
+        if not shutup:
+            print('返回了一个校正系统嗷，你可以将它与原系统相乘~~')
+            print(f'校正过程参数：alpha={alpha}, T={T}')
         return G(1, [alpha*T], [T], 0)
 
     def correct3(self, gammaplus, tk=7):
@@ -274,7 +281,9 @@ class G:
         taramp = self.amp_log(oc)
         beta = 10**(taramp/20)
         tau = tk/oc
-        print('返回了一个校正系统嗷，你可以将它与原系统相乘~~')
+        if not shutup:
+            print('返回了一个校正系统嗷，你可以将它与原系统相乘~~')
+            print(f'校正过程参数：beta={beta}, tau={tau}')
         return G(1, [tau], [beta*tau], 0)
 
     def correct4(self, Wc, tk=7):
@@ -285,10 +294,12 @@ class G:
         if Wc > self.Wc_log:
             print('这比原系统剪切频率还大嗷，确定是用迟后校正嘛。')
             return None
-        taramp = self.amp_log(oc)
+        taramp = self.amp_log(Wc)
         beta = 10**(taramp/20)
-        tau = tk/oc
-        print('返回了一个校正系统嗷，你可以将它与原系统相乘~~')
+        tau = tk/Wc
+        if not shutup:
+            print('返回了一个校正系统嗷，你可以将它与原系统相乘~~')
+            print(f'校正过程参数：beta={beta}, tau={tau}')
         return G(1, [tau], [beta*tau], 0)
 
     def showinfo(self):
@@ -308,7 +319,7 @@ class G:
             print('\t20lg Kg\t=', self.Kg_log, 'dB')
             print('闭环频域近似指标：')
             print(f'\tWb\t= {self.Wb} rad/s' if self.Wb>0 else '\t不存在截止频率')
-            print('\tMr\t=', self.Mr_log*100, r'%')
+            print(f'\tMr\t= {self.Mr_log*100} %' if self.Mr_log>0 else '\t相角裕度过小，无法计算谐振')
             print('闭环时域指标（经验公式、近似指标）：')
             print('\tts\t=', self.ts_approx, 's')
             print(f'\tsigma_p\t= {self.sigmap_approx*100} %' if self.sigmap_approx>0 else '\t相角裕度超出范围，超调量无法用经验公式计算')
@@ -357,4 +368,5 @@ class G:
         else:
             print('这个系统不支持这项功能哦、')
 
-print('算TM的系统校正！')
+if not shutup:
+    print('算TM的系统校正！')
