@@ -65,7 +65,7 @@ class G:
 这些成员为系统即时的特性函数：
 - amp(o) : 精确的开环幅频特性
 - amp_log(o) : 大致的开环幅频特性，使用对数dB形式表示（可近似认为是 20*lg(amp(o))）
-- amp_fb : 精确的闭环幅频特性
+- amp_fb(o) : 精确的闭环幅频特性
 - phase(o) : 精确的相频特性，角度值
 
 这些成员为系统即时的特性值：
@@ -79,6 +79,7 @@ class G:
 - Mr_log : 使用gamma_log计算得到的相对谐振峰值
 - sigmap_approx : 使用经验公式，用gamma_log计算得到的超调量
 - ts_approx : 使用经验公式，用gamma_log和Wc_log计算得到的5%调节时间
+- Wb : 使用amp_fb计算得到的精确的单位反馈截止频率
 你可以使用 showinfo 方法来查看这些值，
 此外，你也可以用 showlogexp 方法输出幅频对数算式，拿一点过程分嘛
 
@@ -131,11 +132,11 @@ class G:
         den = ''
 
         if not self.tau:
-            num = str(self.k)
+            num = str(rnd(self.k))
         elif self.k==1:
             num = ''.join([f'({rnd(t)}*s + 1)' for t in self.tau])
         else:
-            num = str(self.k) + '*' + ''.join([f'({rnd(t)}*s + 1)' for t in self.tau])
+            num = str(rnd(self.k)) + '*' + ''.join([f'({rnd(t)}*s + 1)' for t in self.tau])
 
         if not self.time:
             if self.v==0:
@@ -177,26 +178,26 @@ class G:
                 print('返回的系统有点高级哦，没法自动算指标嗷:(')
             return
 
-        amp_exp = 'lambda o:' + str(self.k) + '/o**' + str(self.v)
-        amp_log_exp = 'lambda o:20*log(' + str(self.k) + '/o**' + str(self.v)
-        phase_exp = 'lambda o:' + str(-90*self.v) + '+(0'
-        fbamp_num_exp = '1'
+        amp_exp = f'lambda o:{self.k}/o**{self.v}'
+        amp_log_exp = f'lambda o:20*log({self.k}/o**{self.v}'
+        phase_exp = f'lambda o:{-90*self.v}+(0'
+        fbamp_num_exp = f'{self.k}'
 
         for t in self.tau:
             t1 = 1/t
-            amp_exp += f'*sqrt(1+({str(t)}*o)**2)'
-            amp_log_exp += f'*(o*{str(t)} if o>={str(t1)} else 1)'
-            fbamp_num_exp += f'*(1+(o*{str(t)}*1j))'
-            phase_exp += f'+atan(o*{str(t)})'
+            amp_exp += f'*sqrt(1+({t}*o)**2)'
+            amp_log_exp += f'*(o*{t} if o>={t1} else 1)'
+            fbamp_num_exp += f'*(1+(o*{t}*1j))'
+            phase_exp += f'+atan(o*{t})'
 
         fbamp_den_exp = fbamp_num_exp+'+o*1j'
 
         for t in self.time:
             t1 = 1/t
-            amp_exp += f'/sqrt(1+({str(t)}*o)**2)'
-            amp_log_exp += f'/(o*{str(t)} if o>={str(t1)} else 1)'
-            fbamp_den_exp += f'*(1+(o*{str(t)}*1j))'
-            phase_exp += f'-atan(o*{str(t)})'
+            amp_exp += f'/sqrt(1+({t}*o)**2)'
+            amp_log_exp += f'/(o*{t} if o>={t1} else 1)'
+            fbamp_den_exp += f'*(1+(o*{t}*1j))'
+            phase_exp += f'-atan(o*{t})'
 
         amp_log_exp += ',10)'
         phase_exp += ')*180/pi'
